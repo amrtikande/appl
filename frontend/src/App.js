@@ -1,52 +1,108 @@
-import { useEffect } from "react";
+import { useState, useEffect } from "react";
 import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import axios from "axios";
+import { Toaster } from "@/components/ui/sonner";
+import { toast } from "sonner";
+
+// Pages
+import HomePage from "@/pages/HomePage";
+import ProductDetail from "@/pages/ProductDetail";
+import CartPage from "@/pages/CartPage";
+import CheckoutPage from "@/pages/CheckoutPage";
+import LoginPage from "@/pages/LoginPage";
+import MerchantDashboard from "@/pages/MerchantDashboard";
+import AdminDashboard from "@/pages/AdminDashboard";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+export const API = `${BACKEND_URL}/api`;
 
-const Home = () => {
-  const helloWorldApi = async () => {
+// Auth context
+export const useAuth = () => {
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (token) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      fetchUser();
+    } else {
+      setLoading(false);
+    }
+  }, [token]);
+
+  const fetchUser = async () => {
     try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
+      const response = await axios.get(`${API}/auth/me`);
+      setUser(response.data);
+    } catch (error) {
+      console.error('Failed to fetch user', error);
+      logout();
+    } finally {
+      setLoading(false);
     }
   };
 
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
+  const login = (newToken, userData) => {
+    localStorage.setItem('token', newToken);
+    setToken(newToken);
+    setUser(userData);
+    axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+  };
 
-  return (
-    <div>
-      <header className="App-header">
-        <a
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
-  );
+  const logout = () => {
+    localStorage.removeItem('token');
+    setToken(null);
+    setUser(null);
+    delete axios.defaults.headers.common['Authorization'];
+  };
+
+  return { user, token, loading, login, logout };
 };
 
 function App() {
+  const auth = useAuth();
+
+  if (auth.loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-green-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
   return (
     <div className="App">
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
+          {/* Public routes */}
+          <Route path="/" element={<HomePage auth={auth} />} />
+          <Route path="/product/:id" element={<ProductDetail auth={auth} />} />
+          <Route path="/cart" element={<CartPage auth={auth} />} />
+          <Route path="/checkout" element={<CheckoutPage auth={auth} />} />
+          <Route path="/login" element={<LoginPage auth={auth} />} />
+          
+          {/* Protected routes */}
+          <Route 
+            path="/merchant" 
+            element={
+              auth.user?.role === 'merchant' || auth.user?.role === 'admin' 
+                ? <MerchantDashboard auth={auth} /> 
+                : <Navigate to="/login" />
+            } 
+          />
+          <Route 
+            path="/admin" 
+            element={
+              auth.user?.role === 'admin' 
+                ? <AdminDashboard auth={auth} /> 
+                : <Navigate to="/login" />
+            } 
+          />
         </Routes>
       </BrowserRouter>
+      <Toaster position="top-center" richColors />
     </div>
   );
 }
